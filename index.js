@@ -8,11 +8,16 @@ const jwt = require("jsonwebtoken")
 const cookieParser = require("cookie-parser")
 const cors = require('cors');
 app.use(cors({
-    origin: ['https://esthetica-frontend.web.app', 'https://esthetica-frontend.firebaseapp.com'],
+    origin: ["http://localhost:5173", 'https://esthetica-frontend.web.app', 'https://esthetica-frontend.firebaseapp.com'],
     credentials: true
 }))
 app.use(express.json())
 app.use(cookieParser())
+const cookieOptions = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+};
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.5bogalj.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 //middlewares
@@ -57,19 +62,14 @@ async function run() {
                 expiresIn: '100d'
             })
             res
-                .cookie('token', token, {
-                    httpOnly: true,
-                    secure: true,
-                    sameSite: 'none'
-
-                })
+                .cookie('token', token, cookieOptions)
                 .send({ sucess: true })
         })
 
         app.post('/logout', async (req, res) => {
             const user = req.body;
             console.log('logging out', user)
-            res.clearCookie('token', { maxAge: 0 }).send({ sucess: true })
+            res.clearCookie('token', { ...cookieOptions, maxAge: 0 }).send({ sucess: true })
         })
 
         // app.get("/services", async (req, res) => {
@@ -90,30 +90,68 @@ async function run() {
         //     const result = await cursor.toArray();
         //     res.send(result);
         // })
+        // app.get("/services", async (req, res) => {
+        //     const filter = req.query;
+        //     console.log(filter);
+
+        //     const query = {
+        //         title: { $regex: filter.search, $options: 'i' }
+        //     };
+
+        //     const sortOrder = filter.sort === 'asc' ? 1 : -1;
+
+        //     const pipeline = [
+        //         { $match: query },
+        //         {
+        //             $addFields: {
+        //                 priceAsNumber: { $toDouble: "$price" }
+        //             }
+        //         },
+        //         { $sort: { priceAsNumber: sortOrder } }
+        //     ];
+
+        //     const cursor = serviceCollection.aggregate(pipeline);
+        //     const result = await cursor.toArray();
+        //     res.send(result);
+        // });
         app.get("/services", async (req, res) => {
-            const filter = req.query;
-            console.log(filter);
+            try {
+                // Get the search filter from query params and ensure it's a string
+                const filter = req.query;
+                const searchValue = filter.search ? filter.search.toString() : ''; // Ensure search is a string
 
-            const query = {
-                title: { $regex: filter.search, $options: 'i' }
-            };
+                // Construct the query using $regex
+                const query = {
+                    title: { $regex: searchValue, $options: 'i' }
+                };
 
-            const sortOrder = filter.sort === 'asc' ? 1 : -1;
+                // Determine the sort order
+                const sortOrder = filter.sort === 'asc' ? 1 : -1;
 
-            const pipeline = [
-                { $match: query },
-                {
-                    $addFields: {
-                        priceAsNumber: { $toDouble: "$price" }
-                    }
-                },
-                { $sort: { priceAsNumber: sortOrder } }
-            ];
+                // Create the aggregation pipeline
+                const pipeline = [
+                    { $match: query },
+                    {
+                        $addFields: {
+                            priceAsNumber: { $toDouble: "$price" }
+                        }
+                    },
+                    { $sort: { priceAsNumber: sortOrder } }
+                ];
 
-            const cursor = serviceCollection.aggregate(pipeline);
-            const result = await cursor.toArray();
-            res.send(result);
+                // Execute the aggregation
+                const cursor = serviceCollection.aggregate(pipeline);
+                const result = await cursor.toArray();
+
+                // Send the result back to the client
+                res.send(result);
+            } catch (error) {
+                // Handle errors
+                console.error('Error fetching services:', error);
+                res.status(500).send('Server Error');
+            }
         });
+
 
         app.get("/services/:id", async (req, res) => {
             const id = req.params.id;
