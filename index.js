@@ -8,7 +8,7 @@ const jwt = require("jsonwebtoken")
 const cookieParser = require("cookie-parser")
 const cors = require('cors');
 app.use(cors({
-    origin: ['http://localhost:5173', 'http://localhost:5174'],
+    origin: ['https://esthetica-frontend.web.app', 'https://esthetica-frontend.firebaseapp.com'],
     credentials: true
 }))
 app.use(express.json())
@@ -17,11 +17,11 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.5bogalj.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 //middlewares
 const logger = async (req, res, next) => {
-    console.log('called', req.host, req.originalUrl)
+    console.log('called', req.method, req.url)
     next()
 }
 const verifyToken = async (req, res, next) => {
-    const token = req.cookies?.token;
+    const token = req?.cookies?.token;
     if (!token) {
         return res.status(401).send({ message: "Unauthorized Access" })
     }
@@ -46,11 +46,11 @@ const client = new MongoClient(uri, {
 async function run() {
     try {
         // Connect the client to the server	(optional starting in v4.7)
-        await client.connect();
+        // await client.connect();
         const serviceCollection = client.db("esthetica_new").collection('services')
         const bookingsCollection = client.db("esthetica_new").collection('bookings')
         //auth related api
-        app.post('jwt', logger, async (req, res) => {
+        app.post('/jwt', logger, async (req, res) => {
             const user = req.body;
             console.log(user)
             const token = jwt.sign(user, process.env.ACCESS_TOKEN, {
@@ -59,18 +59,62 @@ async function run() {
             res
                 .cookie('token', token, {
                     httpOnly: true,
-                    secure: false
+                    secure: true,
+                    sameSite: 'none'
+
                 })
                 .send({ sucess: true })
         })
 
-
-
-        app.get("/services", async (req, res) => {
-            const cursor = serviceCollection.find()
-            const result = await cursor.toArray()
-            res.send(result)
+        app.post('/logout', async (req, res) => {
+            const user = req.body;
+            console.log('logging out', user)
+            res.clearCookie('token', { maxAge: 0 }).send({ sucess: true })
         })
+
+        // app.get("/services", async (req, res) => {
+        //     const filter = req.query;
+        //     console.log(filter);
+        //     const query = {
+
+        //         title: { $regex: filter.search, $options: 'i' }
+        //     };
+
+        //     const options = {
+        //         sort: {
+        //             price: filter.sort === 'asc' ? 1 : -1
+        //         }
+        //     };
+
+        //     const cursor = serviceCollection.find(query, options);
+        //     const result = await cursor.toArray();
+        //     res.send(result);
+        // })
+        app.get("/services", async (req, res) => {
+            const filter = req.query;
+            console.log(filter);
+
+            const query = {
+                title: { $regex: filter.search, $options: 'i' }
+            };
+
+            const sortOrder = filter.sort === 'asc' ? 1 : -1;
+
+            const pipeline = [
+                { $match: query },
+                {
+                    $addFields: {
+                        priceAsNumber: { $toDouble: "$price" }
+                    }
+                },
+                { $sort: { priceAsNumber: sortOrder } }
+            ];
+
+            const cursor = serviceCollection.aggregate(pipeline);
+            const result = await cursor.toArray();
+            res.send(result);
+        });
+
         app.get("/services/:id", async (req, res) => {
             const id = req.params.id;
             const query = { _id: new ObjectId(id) }
@@ -121,7 +165,7 @@ async function run() {
             res.send(result)
         })
 
-        await client.db("admin").command({ ping: 1 });
+        // await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
     } finally {
         // Ensures that the client will close when you finish/error
