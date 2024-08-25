@@ -20,7 +20,7 @@ To run this project locally, follow these steps:
 
 ### 1. Clone the Repository
 
-git clone https://github.com/your-username/esthetica-backend.git
+git clone https://github.com/bhabna01/Esthetica-Backend.git
 cd esthetica-backend
 
 ### 2. Install Dependencies
